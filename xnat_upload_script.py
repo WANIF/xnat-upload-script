@@ -1,0 +1,55 @@
+#!/usr/bin/python3
+
+# Python script to search for missing PV archives to upload.
+# GENERAL CONCEPT: Links to each file are stored in a separate folder. When an archive is uploaded to XNAT,
+# a link is created as a way of designating that file has been uploaded. Therefore, any files that do not have
+# a link are yet to be uploaded and need actioning. Any files where the mtime is NEWER than the link's creation time
+# need re-uploading (as they have obviously been updated since the last run).
+# Note that this assumes that DICOM files are present for each archive. If not, then it will fail.
+# TODO: Handle errors and problems gracefully e.g. what happens when you upload an existing file.
+# Note this has the advantage that if you want to re-upload a file, just delete its link.
+#
+# So here's the step-by-step method
+# 1. Search for PV files
+# 2. For each PV file, look for its corresponding link.
+# 2-a: If a link does not exist, file needs uploading.
+# 2-a-1. Upload it to XNAT as a compressed folder.
+# 2-a-2. XNAT will only ingest the DICOMs. Also upload the .PVDataset as a resource.
+# 2-a-2. Create a link to mark it as updated.
+# 2-b: If a link exists, but is older, it means the archive has been modified since last upload.
+# 2-b-1. If the link exists, check the mtime.
+# 2-b-2. If the mtime is older than archive, then the archive needs updating. Re-upload both the comrpessed archive
+#        and the .PvDataset. TODO: figure out how XNAT handles this.
+# 2-b-3. Create a new link to mark it as updated.
+
+import pandas as pd
+from pathlib import Path
+import subprocess
+
+# Configuration
+XNAT_DATA_DIR = '/data/test_projects'
+XNAT_LINK_DIR = '/data/test_links'
+
+projects = [d.name for d in Path(XNAT_DATA_DIR).iterdir() if d.is_dir()]
+
+# TODO: Fix to run on all projects, not just this test one
+project = projects[0]
+# Create the link dir if needed
+project_link_dir = Path(f"{XNAT_LINK_DIR}/{project}")
+if not project_link_dir.exists():
+    try:
+        project_link_dir.mkdir()
+    except:
+        print("Project link dir can't be created - exiting.")
+        exit(1)
+
+
+# Step 1: search for all PV files: search XNAT_DATA_DIR for .PvDatasets
+archived_files = Path(f"{XNAT_DATA_DIR}/{project}").glob("**/*.PvDatasets")
+for archive in archived_files:
+    link = Path(f"{XNAT_LINK_DIR}/{project}/{archive.name}")
+    if link.is_symlink():
+        print(f"Link {link.name} exists")
+    else:
+        print(f"Link {link.name} doesn't exist - creating")
+        link.symlink_to(archive)
