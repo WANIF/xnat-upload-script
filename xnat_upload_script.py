@@ -41,15 +41,22 @@ if not project_link_dir.exists():
         project_link_dir.mkdir()
     except:
         print("Project link dir can't be created - exiting.")
-        exit(1)
+        exit(1)  # Change to "next" when looping over projects
 
 
 # Step 1: search for all PV files: search XNAT_DATA_DIR for .PvDatasets
 archived_files = Path(f"{XNAT_DATA_DIR}/{project}").glob("**/*.PvDatasets")
 for archive in archived_files:
+    # Step 2: search for its corresponding link
     link = Path(f"{XNAT_LINK_DIR}/{project}/{archive.name}")
     if link.is_symlink():
-        print(f"Link {link.name} exists")
+        # Link already exists: check if the archive is newer (i.e. link out of date)
+        if archive.stat().st_mtime > link.lstat().st_mtime:
+            print("Link is out of date: needs updating!")
+            subprocess.run(["touch", "-h", f"{link}"])
+        else:
+            print("Link is up to date!")
     else:
+        # Step 2-a, 2-a-1: link does not exist: upload to XNAT
         print(f"Link {link.name} doesn't exist - creating")
         link.symlink_to(archive)
