@@ -6,7 +6,6 @@
 # a link are yet to be uploaded and need actioning. Any files where the mtime is NEWER than the link's creation time
 # need re-uploading (as they have obviously been updated since the last run).
 # Note that this assumes that DICOM files are present for each archive. If not, then it will fail.
-# TODO: Handle errors and problems gracefully e.g. what happens when you upload an existing file.
 # Note this has the advantage that if you want to re-upload a file, just delete its link.
 #
 # So here's the step-by-step method
@@ -18,18 +17,29 @@
 # 2-a-2. Create a link to mark it as updated.
 # 2-b: If a link exists, but is older, it means the archive has been modified since last upload.
 # 2-b-1. If the link exists, check the mtime.
-# 2-b-2. If the mtime is older than archive, then the archive needs updating. Re-upload both the comrpessed archive
+# 2-b-2. If the mtime is older than archive, then the archive needs updating. Re-upload both the compressed archive
 #        and the .PvDataset. TODO: figure out how XNAT handles this.
 # 2-b-3. Create a new link to mark it as updated.
 
 import pandas as pd
 from pathlib import Path
 import subprocess
+import xnat
 
 # Configuration
 XNAT_DATA_DIR = '/data/test_projects'
 XNAT_LINK_DIR = '/data/test_links'
 
+
+# Useful methods
+# Uploads an archive to XNAT and associates with a given project
+def upload_archive(archive, project):
+    with xnat.connect('http://localhost') as session:
+        upload_session = session.services.import_(
+            path=archive, project=project, content_type="application/zip", overwrite="delete")
+
+
+# SCRIPT STARTS HERE
 projects = [d.name for d in Path(XNAT_DATA_DIR).iterdir() if d.is_dir()]
 
 # TODO: Fix to run on all projects, not just this test one
@@ -59,4 +69,6 @@ for archive in archived_files:
     else:
         # Step 2-a, 2-a-1: link does not exist: upload to XNAT
         print(f"Link {link.name} doesn't exist - creating")
-        link.symlink_to(archive)
+        print(f"archive is {str(archive)}")
+        upload_archive(str(archive), project)
+        #link.symlink_to(archive)
