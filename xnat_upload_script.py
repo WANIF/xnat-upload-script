@@ -32,11 +32,18 @@ XNAT_LINK_DIR = '/data/test_links'
 
 
 # Useful methods
-# Uploads an archive to XNAT and associates with a given project
+# Uploads an archive to XNAT (including PvDataset) and associates with a given project. Uploads will overwrite
+# scans.
 def upload_archive(archive, project):
     with xnat.connect('http://localhost') as session:
-        upload_session = session.services.import_(
-            path=archive, project=project, content_type="application/zip", overwrite="delete")
+        # Upload (and ovewrite) the XNAT stored experiment
+        exp = session.services.import_(
+            path=str(archive), project=project, content_type="application/zip", overwrite="delete")
+        # If it doesn't exist, create a PvDatasets resource
+        if "PvDatasets" not in exp.resources.keys():
+            session.classes.ResourceCatalog(parent=exp, label='PvDatasets')
+        # Now upload the file (allow overwriting)
+        exp.resources['PvDatasets'].upload(str(archive), archive.name, overwrite="delete")
 
 
 # SCRIPT STARTS HERE
@@ -62,7 +69,8 @@ for archive in archived_files:
     if link.is_symlink():
         # Link already exists: check if the archive is newer (i.e. link out of date)
         if archive.stat().st_mtime > link.lstat().st_mtime:
-            print("Link is out of date: needs updating!")
+            print("Archived modified: needs re-upload")
+            upload_archive(archive, project)
             subprocess.run(["touch", "-h", f"{link}"])
         else:
             print("Link is up to date!")
@@ -70,5 +78,5 @@ for archive in archived_files:
         # Step 2-a, 2-a-1: link does not exist: upload to XNAT
         print(f"Link {link.name} doesn't exist - creating")
         print(f"archive is {str(archive)}")
-        upload_archive(str(archive), project)
-        #link.symlink_to(archive)
+        upload_archive(archive, project)
+        link.symlink_to(archive)
