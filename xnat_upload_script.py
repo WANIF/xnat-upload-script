@@ -27,6 +27,7 @@ import subprocess
 import xnat
 
 # Configuration
+XNAT_SERVER_URL = 'http://localhost'
 XNAT_DATA_DIR = '/data/test_projects'
 XNAT_LINK_DIR = '/data/test_links'
 
@@ -35,7 +36,7 @@ XNAT_LINK_DIR = '/data/test_links'
 # Uploads an archive to XNAT (including PvDataset) and associates with a given project. Uploads will overwrite
 # scans.
 def upload_archive(archive, project):
-    with xnat.connect('http://localhost') as session:
+    with xnat.connect(XNAT_SERVER_URL) as session:
         # Upload (and ovewrite) the XNAT stored experiment
         exp = session.services.import_(
             path=str(archive), project=project, content_type="application/zip", overwrite="delete")
