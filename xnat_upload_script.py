@@ -20,6 +20,10 @@
 # 2-b-2. If the mtime is older than archive, then the archive needs updating. Re-upload both the compressed archive
 #        and the .PvDataset. TODO: figure out how XNAT handles this.
 # 2-b-3. Create a new link to mark it as updated.
+#
+# TODO: Include actual logging, proper error handling, etc.
+
+# Created Tim Rosenow
 
 import pandas as pd
 from pathlib import Path
@@ -27,7 +31,7 @@ import subprocess
 import xnat
 
 # Configuration
-XNAT_SERVER_URL = 'http://localhost'
+XNAT_URL = 'http://localhost'
 XNAT_DATA_DIR = '/data/test_projects'
 XNAT_LINK_DIR = '/data/test_links'
 
@@ -36,7 +40,7 @@ XNAT_LINK_DIR = '/data/test_links'
 # Uploads an archive to XNAT (including PvDataset) and associates with a given project. Uploads will overwrite
 # scans.
 def upload_archive(archive, project):
-    with xnat.connect(XNAT_SERVER_URL) as session:
+    with xnat.connect(XNAT_URL) as session:
         # Upload (and ovewrite) the XNAT stored experiment
         exp = session.services.import_(
             path=str(archive), project=project, content_type="application/zip", overwrite="delete")
@@ -50,34 +54,34 @@ def upload_archive(archive, project):
 # SCRIPT STARTS HERE
 projects = [d.name for d in Path(XNAT_DATA_DIR).iterdir() if d.is_dir()]
 
-# TODO: Fix to run on all projects, not just this test one
-project = projects[0]
-# Create the link dir if needed
-project_link_dir = Path(f"{XNAT_LINK_DIR}/{project}")
-if not project_link_dir.exists():
-    try:
-        project_link_dir.mkdir()
-    except:
-        print("Project link dir can't be created - exiting.")
-        exit(1)  # Change to "next" when looping over projects
+# Run this on every project directory separately. XNAT project name must match directory name
+for project in projects:
+    # Create the link dir if needed
+    project_link_dir = Path(f"{XNAT_LINK_DIR}/{project}")
+    if not project_link_dir.exists():
+        try:
+            project_link_dir.mkdir()
+        except:
+            print("Project link dir can't be created - exiting.")
+            exit(1)  # Change to "next" when looping over projects
 
 
-# Step 1: search for all PV files: search XNAT_DATA_DIR for .PvDatasets
-archived_files = Path(f"{XNAT_DATA_DIR}/{project}").glob("**/*.PvDatasets")
-for archive in archived_files:
-    # Step 2: search for its corresponding link
-    link = Path(f"{XNAT_LINK_DIR}/{project}/{archive.name}")
-    if link.is_symlink():
-        # Link already exists: check if the archive is newer (i.e. link out of date)
-        if archive.stat().st_mtime > link.lstat().st_mtime:
-            print("Archived modified: needs re-upload")
-            upload_archive(archive, project)
-            subprocess.run(["touch", "-h", f"{link}"])
+    # Step 1: search for all PV files: search XNAT_DATA_DIR for .PvDatasets
+    archived_files = Path(f"{XNAT_DATA_DIR}/{project}").glob("**/*.PvDatasets")
+    for archive in archived_files:
+        # Step 2: search for its corresponding link
+        link = Path(f"{XNAT_LINK_DIR}/{project}/{archive.name}")
+        if link.is_symlink():
+            # Link already exists: check if the archive is newer (i.e. link out of date)
+            if archive.stat().st_mtime > link.lstat().st_mtime:
+                print("Archived modified: needs re-upload")
+                upload_archive(archive, project)
+                subprocess.run(["touch", "-h", f"{link}"])
+            else:
+                print("Link is up to date!")
         else:
-            print("Link is up to date!")
-    else:
-        # Step 2-a, 2-a-1: link does not exist: upload to XNAT
-        print(f"Link {link.name} doesn't exist - creating")
-        print(f"archive is {str(archive)}")
-        upload_archive(archive, project)
-        link.symlink_to(archive)
+            # Step 2-a, 2-a-1: link does not exist: upload to XNAT
+            print(f"Link {link.name} doesn't exist - creating")
+            print(f"archive is {str(archive)}")
+            upload_archive(archive, project)
+            link.symlink_to(archive)
