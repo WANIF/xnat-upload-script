@@ -21,11 +21,11 @@
 #        and the .PvDataset. TODO: figure out how XNAT handles this.
 # 2-b-3. Create a new link to mark it as updated.
 #
-# TODO: Include actual logging, proper error handling, etc.
+# TODO: Fix the catch-all exceptions, handle errors better.
 
 # Created Tim Rosenow
 
-import pandas as pd
+import logging
 from pathlib import Path
 import subprocess
 import xnat
@@ -34,6 +34,8 @@ import xnat
 XNAT_URL = 'http://localhost'
 XNAT_DATA_DIR = '/data/test_projects'
 XNAT_LINK_DIR = '/data/test_links'
+LOG_FILE = '/data/xnat_upload_log.txt'
+LOG_LEVEL = logging.INFO
 
 
 # Useful methods
@@ -51,37 +53,49 @@ def upload_archive(archive, project):
         exp.resources['PvDatasets'].upload(str(archive), archive.name, overwrite="delete")
 
 
-# SCRIPT STARTS HERE
-projects = [d.name for d in Path(XNAT_DATA_DIR).iterdir() if d.is_dir()]
+# MAIN SCRIPT STARTS HERE
+if __name__ == '__main__':
 
-# Run this on every project directory separately. XNAT project name must match directory name
-for project in projects:
-    # Create the link dir if needed
-    project_link_dir = Path(f"{XNAT_LINK_DIR}/{project}")
-    if not project_link_dir.exists():
-        try:
-            project_link_dir.mkdir()
-        except:
-            print("Project link dir can't be created - exiting.")
-            exit(1)  # Change to "next" when looping over projects
+    # Set up logging
+    logging.basicConfig(format='%(asctime)s %(message)s')
+    logging.basicConfig(filename=LOG_FILE, encoding='utf-8', level=LOG_LEVEL)
 
+    projects = [d.name for d in Path(XNAT_DATA_DIR).iterdir() if d.is_dir()]
 
-    # Step 1: search for all PV files: search XNAT_DATA_DIR for .PvDatasets
-    archived_files = Path(f"{XNAT_DATA_DIR}/{project}").glob("**/*.PvDatasets")
-    for archive in archived_files:
-        # Step 2: search for its corresponding link
-        link = Path(f"{XNAT_LINK_DIR}/{project}/{archive.name}")
-        if link.is_symlink():
-            # Link already exists: check if the archive is newer (i.e. link out of date)
-            if archive.stat().st_mtime > link.lstat().st_mtime:
-                print("Archived modified: needs re-upload")
-                upload_archive(archive, project)
-                subprocess.run(["touch", "-h", f"{link}"])
+    # Run this on every project directory separately. XNAT project name must match directory name
+    for project in projects:
+        logging.info(f"Updating project {project}.")
+        # Create the link dir if needed
+        project_link_dir = Path(f"{XNAT_LINK_DIR}/{project}")
+        if not project_link_dir.exists():
+            try:
+                project_link_dir.mkdir()
+            except Exception as e:
+                logging.error(f"Project link dir {project_link_dir} can't be created: {str(e)}.")
+
+        # Step 1: search for all PV files: search XNAT_DATA_DIR for .PvDatasets
+        archived_files = Path(f"{XNAT_DATA_DIR}/{project}").glob("**/*.PvDatasets")
+        for archive in archived_files:
+            # Step 2: search for its corresponding link
+            link = Path(f"{XNAT_LINK_DIR}/{project}/{archive.name}")
+            if link.is_symlink():
+                # Link already exists: check if the archive is newer (i.e. link out of date)
+                if archive.stat().st_mtime > link.lstat().st_mtime:
+                    logging.info(f"Archive {archive} modified: uploading new version.")
+                    try:
+                        upload_archive(archive, project)
+                        subprocess.run(["touch", "-h", f"{link}"])
+                    except Exception as e:
+                        logging.error(f"Failed to upload {archive} to {project}: {str(e)}")
+                else:
+                    logging.debug(f"Archive {archive} is up to date, no action taken.")
             else:
-                print("Link is up to date!")
-        else:
-            # Step 2-a, 2-a-1: link does not exist: upload to XNAT
-            print(f"Link {link.name} doesn't exist - creating")
-            print(f"archive is {str(archive)}")
-            upload_archive(archive, project)
-            link.symlink_to(archive)
+                # Step 2-a, 2-a-1: link does not exist: upload to XNAT
+                logging.info(f"Link {link.name} for {archive} doesn't exist - uploading to {project}.")
+                try:
+                    upload_archive(archive, project)
+                    link.symlink_to(archive)
+                except Exception as e:
+                    logging.error(f"Failed to upload archive {archive} to {project}: {str(e)}.")
+
+    logging.info("Data upload complete.")
