@@ -1,6 +1,6 @@
-# xnat-upload-script
+# xnat-scripts
 
-Upload script for Bruker Paravision files. Assumes all files have been exported including DICOM.
+File management scripts for DICOM files created from Paravision (ideally v360.3.4).
 
 Note: put authentication data (user/password) in the .netrc file (`$HOME/.netrc`) with the following format:
 
